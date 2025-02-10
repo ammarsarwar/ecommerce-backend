@@ -6,7 +6,15 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { Product } from "./entity/Product";
 import { User } from "./entity/User";
+import { z } from "zod";
+import { Like, MoreThanOrEqual, LessThanOrEqual } from "typeorm";
 
+// Define a schema for query parameters
+const productQuerySchema = z.object({
+  name: z.string().optional(), // Optional name filter
+  minPrice: z.string().optional(), // Optional minimum price filter
+  maxPrice: z.string().optional(), // Optional maximum price filter
+});
 // Load environment variables
 dotenv.config();
 
@@ -109,52 +117,73 @@ AppDataSource.initialize()
     });
 
     // Get all products
-    app.get("/products", async (req: Request, res: Response): Promise<any> => {
-      const productRepository = AppDataSource.getRepository(Product);
-      const products = await productRepository.find();
-      res.json(products);
+    app.get("/products", async (req, res) => {
+      try {
+        // Validate and parse query parameters
+        const queryParams = productQuerySchema.parse(req.query);
+
+        // Build a query object based on filters
+        const query: Record<string, any> = {};
+        if (queryParams.name) {
+          query.name = Like(`%${queryParams.name}%`); // Use TypeORM's Like operator for case-insensitive search
+        }
+        if (queryParams.minPrice) {
+          query.price = MoreThanOrEqual(parseFloat(queryParams.minPrice)); // Convert minPrice to a number
+        }
+        if (queryParams.maxPrice) {
+          query.price = LessThanOrEqual(parseFloat(queryParams.maxPrice)); // Convert maxPrice to a number
+        }
+
+        const productRepository = AppDataSource.getRepository(Product);
+        const products = await productRepository.find({ where: query }); // Apply filters
+
+        res.json(products);
+      } catch (error) {
+        console.error("Error fetching products:", error); // Log detailed error
+        res.status(500).json({ message: "Internal server error" });
+      }
     });
 
     // Add a new product (Admin only)
-  app.post(
-    "/products",
-    authenticateAdmin,
-    async (req: Request, res: Response): Promise<any> => {
-      const productRepository = AppDataSource.getRepository(Product);
-      const newProduct = productRepository.create(req.body);
-      const result = await productRepository.save(newProduct);
-      res.json(result);
-    }
-  );
+    app.post(
+      "/products",
+      authenticateAdmin,
+      async (req: Request, res: Response): Promise<any> => {
+        const productRepository = AppDataSource.getRepository(Product);
+        const newProduct = productRepository.create(req.body);
+        const result = await productRepository.save(newProduct);
+        res.json(result);
+      }
+    );
 
     // Update a product (Admin only)
-  app.put(
-    "/products/:id",
-    authenticateAdmin,
-    async (req: Request, res: Response): Promise<any> => {
-      const productId = parseInt(req.params.id);
-      const productRepository = AppDataSource.getRepository(Product);
-      const product = await productRepository.findOneBy({ id: productId });
-      if (!product)
-        return res.status(404).json({ message: "Product not found" });
+    app.put(
+      "/products/:id",
+      authenticateAdmin,
+      async (req: Request, res: Response): Promise<any> => {
+        const productId = parseInt(req.params.id);
+        const productRepository = AppDataSource.getRepository(Product);
+        const product = await productRepository.findOneBy({ id: productId });
+        if (!product)
+          return res.status(404).json({ message: "Product not found" });
 
-      productRepository.merge(product, req.body);
-      const result = await productRepository.save(product);
-      res.json(result);
-    }
-  );
+        productRepository.merge(product, req.body);
+        const result = await productRepository.save(product);
+        res.json(result);
+      }
+    );
 
     // Delete a product (Admin only)
-   app.delete(
-     "/products/:id",
-     authenticateAdmin,
-     async (req: Request, res: Response): Promise<any> => {
-       const productId = parseInt(req.params.id);
-       const productRepository = AppDataSource.getRepository(Product);
-       const result = await productRepository.delete(productId);
-       res.json(result);
-     }
-   );
+    app.delete(
+      "/products/:id",
+      authenticateAdmin,
+      async (req: Request, res: Response): Promise<any> => {
+        const productId = parseInt(req.params.id);
+        const productRepository = AppDataSource.getRepository(Product);
+        const result = await productRepository.delete(productId);
+        res.json(result);
+      }
+    );
 
     // Start the server
     app.listen(5000, () => {

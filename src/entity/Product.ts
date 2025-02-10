@@ -9,7 +9,7 @@ export class Product {
   name!: string;
 
   @Column("decimal", { precision: 10, scale: 2 })
-  price!: number;
+  price!: string;
 
   @Column()
   stockQuantity!: number;
